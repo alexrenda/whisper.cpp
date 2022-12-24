@@ -685,6 +685,7 @@ int main(int argc, char ** argv) {
                 }
                 if (n_segments) {
                     printf("\n");
+                    fflush(stdout);
                 }
 
                 if (params.fname_out.length() > 0) {
