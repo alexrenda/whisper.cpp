@@ -55,6 +55,7 @@ struct whisper_params {
 };
 
 void whisper_print_usage(int argc, char ** argv, const whisper_params & params);
+void whisper_print_microphones();
 
 bool whisper_params_parse(int argc, char ** argv, whisper_params & params) {
     for (int i = 1; i < argc; i++) {
@@ -64,6 +65,12 @@ bool whisper_params_parse(int argc, char ** argv, whisper_params & params) {
             whisper_print_usage(argc, argv, params);
             exit(0);
         }
+
+        if (arg == "-mi" || arg == "--microphones") {
+          whisper_print_microphones();
+          exit(0);
+        }
+
         else if (arg == "-t"   || arg == "--threads")       { params.n_threads     = std::stoi(argv[++i]); }
         else if (                 arg == "--step")          { params.step_ms       = std::stoi(argv[++i]); }
         else if (                 arg == "--length")        { params.length_ms     = std::stoi(argv[++i]); }
@@ -96,6 +103,7 @@ void whisper_print_usage(int /*argc*/, char ** argv, const whisper_params & para
     fprintf(stderr, "\n");
     fprintf(stderr, "options:\n");
     fprintf(stderr, "  -h,       --help          [default] show this help message and exit\n");
+    fprintf(stderr, "  -mi,      --microphones   [n/a]  print the microphone names\n");
     fprintf(stderr, "  -t N,     --threads N     [%-7d] number of threads to use during computation\n", params.n_threads);
     fprintf(stderr, "            --step N        [%-7d] audio step size in milliseconds\n",             params.step_ms);
     fprintf(stderr, "            --length N      [%-7d] audio length in milliseconds\n",                params.length_ms);
@@ -701,4 +709,21 @@ int main(int argc, char ** argv) {
     whisper_free(ctx);
 
     return 0;
+}
+
+void whisper_print_microphones() {
+  SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
+
+  if (SDL_Init(SDL_INIT_AUDIO) < 0) {
+    SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't initialize SDL: %s\n", SDL_GetError());
+    return;
+  }
+
+
+  SDL_SetHintWithPriority(SDL_HINT_AUDIO_RESAMPLING_MODE, "medium", SDL_HINT_OVERRIDE);
+
+  int nDevices = SDL_GetNumAudioDevices(SDL_TRUE);
+  for (int i = 0; i < nDevices; i++) {
+    fprintf(stdout, "%s\n", SDL_GetAudioDeviceName(i, SDL_TRUE));
+  }
 }
