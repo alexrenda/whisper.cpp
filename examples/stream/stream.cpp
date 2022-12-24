@@ -517,6 +517,8 @@ int main(int argc, char ** argv) {
 
           auto t_last  = std::chrono::high_resolution_clock::now();
     const auto t_start = t_last;
+    auto last_silence_check = t_last;
+    auto last_full_transcript = t_last;
 
     // main audio loop
     while (is_running) {
@@ -542,6 +544,8 @@ int main(int argc, char ** argv) {
         if (!is_running) {
             break;
         }
+
+        bool vad_preliminary = true;
 
         // process new audio
 
@@ -580,26 +584,29 @@ int main(int argc, char ** argv) {
 
             pcmf32_old = pcmf32;
         } else {
-            const auto t_now  = std::chrono::high_resolution_clock::now();
-            const auto t_diff = std::chrono::duration_cast<std::chrono::milliseconds>(t_now - t_last).count();
+          const auto t_now  = std::chrono::high_resolution_clock::now();
+          const auto t_silence_diff = std::chrono::duration_cast<std::chrono::milliseconds>(t_now - last_silence_check).count();
+          const auto t_transcribe_diff = std::chrono::duration_cast<std::chrono::milliseconds>(t_now - last_full_transcript).count();
 
-            if (t_diff < 2000) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+          // if t_transcribe_diff > params.length_ms, transcribe the whole buffer
+          if (t_transcribe_diff >= params.length_ms) {
+            audio.get(params.length_ms, pcmf32);
+            vad_preliminary = false;
+            last_silence_check = t_now;
+            last_full_transcript = t_now;
+          } else {
+            // if t_silence_diff > 2000, check for silence
+            audio.get(t_transcribe_diff, pcmf32);
 
-                continue;
+            if (t_silence_diff >= 2000) {
+              last_silence_check = t_now;
+              if (vad_simple(pcmf32, WHISPER_SAMPLE_RATE, 1000, params.vad_thold, params.freq_thold, false)) {
+                vad_preliminary = false;
+                last_full_transcript = t_now;
+              }
             }
+          }
 
-            audio.get(2000, pcmf32_new);
-
-            if (vad_simple(pcmf32_new, WHISPER_SAMPLE_RATE, 1000, params.vad_thold, params.freq_thold, false)) {
-                audio.get(params.length_ms, pcmf32);
-            } else {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-                continue;
-            }
-
-            t_last = t_now;
         }
 
         // run the inference
@@ -641,17 +648,25 @@ int main(int argc, char ** argv) {
                     const int64_t t1 = (t_last - t_start).count()/1000000;
                     const int64_t t0 = std::max(0.0, t1 - pcmf32.size()*1000.0/WHISPER_SAMPLE_RATE);
 
-                    printf("\n");
-                    printf("### Transcription %d START | t0 = %d ms | t1 = %d ms\n", n_iter, (int) t0, (int) t1);
-                    printf("\n");
+                    // printf("\n");
+                    // printf("### Transcription %d START | t0 = %d ms | t1 = %d ms\n", n_iter, (int) t0, (int) t1);
+                    // printf("\n");
                 }
 
                 const int n_segments = whisper_full_n_segments(ctx);
+                if (n_segments) {
+                  if (vad_preliminary) {
+                    printf("PRELIMINARY> ");
+                  } else {
+                    printf("FINAL> ");
+                  }
+                }
                 for (int i = 0; i < n_segments; ++i) {
                     const char * text = whisper_full_get_segment_text(ctx, i);
 
                     if (params.no_timestamps) {
-                        printf("%s", text);
+                      printf("%s", text);
+
                         fflush(stdout);
 
                         if (params.fname_out.length() > 0) {
@@ -661,22 +676,25 @@ int main(int argc, char ** argv) {
                         const int64_t t0 = whisper_full_get_segment_t0(ctx, i);
                         const int64_t t1 = whisper_full_get_segment_t1(ctx, i);
 
-                        printf ("[%s --> %s]  %s\n", to_timestamp(t0).c_str(), to_timestamp(t1).c_str(), text);
+                        printf ("%s ", text);
 
                         if (params.fname_out.length() > 0) {
                             fout << "[" << to_timestamp(t0) << " --> " << to_timestamp(t1) << "]  " << text << std::endl;
                         }
                     }
                 }
+                if (n_segments) {
+                    printf("\n");
+                }
 
                 if (params.fname_out.length() > 0) {
                     fout << std::endl;
                 }
 
-                if (use_vad){
-                    printf("\n");
-                    printf("### Transcription %d END\n", n_iter);
-                }
+                // if (use_vad){
+                //     printf("\n");
+                //     printf("### Transcription %d END\n", n_iter);
+                // }
             }
 
             ++n_iter;
