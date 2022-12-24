@@ -435,7 +435,7 @@ int main(int argc, char ** argv) {
     const int n_samples_keep = (params.keep_ms  *1e-3)*WHISPER_SAMPLE_RATE;
     const int n_samples_30s  = (30000           *1e-3)*WHISPER_SAMPLE_RATE;
 
-    const int n_new_line = params.length_ms / params.step_ms - 1; // number of steps to print new line
+    const int n_new_line = (params.step_ms > 0 ? params.length_ms / params.step_ms - 1 : 0); // number of steps to print new line
 
     const bool use_vad = n_samples_step <= 0; // sliding window mode uses VAD
 
